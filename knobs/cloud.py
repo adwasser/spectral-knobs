@@ -44,9 +44,12 @@ class Cloud:
 
     @temp.setter
     def temp(self, temp):
+        fudge_factor = 10
         self._temp = temp
-        self.sigma_v = np.sqrt(3 * c.k_B * self.temp * u.K / c.m_p).to(u.km / u.s)
-        
+        self.sigma_v = np.sqrt(3 * c.k_B * fudge_factor * self.temp * u.K /
+                               c.m_p)
+        self.sigma_v = self.sigma_v.to(u.km / u.s)
+
     @u.quantity_input(wv=u.nm)
     def line_flux(self, wv, weights=None):
         """
@@ -93,7 +96,10 @@ class AbsorptionCloud(Cloud):
 
 class CloudInteractive(widgets.interactive):
     
-    def __init__(self, cloud, wvmin, wvmax):
+    def __init__(self, cloud, wvmin, wvmax,
+                 zmin=0.00, zmax=0.10,
+                 tmin=100, tmax=10000,
+                 dmin=0, dmax=0.1):
         """
         cloud : Cloud object
         wvmin : minimum wavelength in nm
@@ -109,19 +115,19 @@ class CloudInteractive(widgets.interactive):
         wv = np.array(wv) * u.nm
         self.wv = wv
         z_widget = widgets.FloatSlider(value=cloud.z,
-                                       min=0,
-                                       max=0.1,
-                                       step=0.001,
+                                       min=zmin,
+                                       max=zmax,
+                                       step=(zmax - zmin) / 100,
                                        description="Redshift: ",
                                        disabled=False,
                                        continuous_update=False,
                                        orientation="horizontal",
                                        readout=True,
-                                       readout_format=".2f")
+                                       readout_format=".3f")
         temp_widget = widgets.FloatSlider(value=cloud.temp,
-                                          min=100,
-                                          max=10000,
-                                          step=100,
+                                          min=tmin,
+                                          max=tmax,
+                                          step=(tmax - tmin) / 100,
                                           description="Temperature: ",
                                           disabled=False,
                                           continuous_update=False,
@@ -129,15 +135,15 @@ class CloudInteractive(widgets.interactive):
                                           readout=True,
                                           readout_format="d")
         dens_widget = widgets.FloatSlider(value=cloud.dens,
-                                          min=0,
-                                          max=0.1,
-                                          step=0.001,
+                                          min=dmin,
+                                          max=dmax,
+                                          step=(dmax - dmin) / 100,
                                           description="Density: ",
                                           disabled=False,
                                           continuous_update=False,
                                           orientation="horizontal",
                                           readout=True,
-                                          readout_format=".2f")
+                                          readout_format=".3f")
         super().__init__(self.plot,
                          z=z_widget,
                          temp=temp_widget,
@@ -150,6 +156,83 @@ class CloudInteractive(widgets.interactive):
         flux = self.cloud.line_flux(self.wv)
         plt.plot(self.wv, flux)
         plt.xlabel("Wavelength  [nm]")
+        plt.ylabel("Flux density [arbitrary units]")
         # plt.ylabel(r"Flux density [erg cm$^{-2}$ s$^{-1}$ Hz$^{-1}$]")
         plt.ylim(0, 1)
-        # plt.show()
+        plt.show()
+
+class MultiCloudInteractive(widgets.interactive):
+    def __init__(self, clouds, wvmin, wvmax,
+                 zmin=0.00, zmax=0.10,
+                 tmin=100, tmax=10000,
+                 dmin=0, dmax=0.1):
+        """
+        clouds : list of Cloud objects
+        wvmin : minimum wavelength in nm
+        wvmax : maximum wavelength in nm
+        """
+        self.clouds = clouds
+        self.ncomponents = len(clouds)
+        dv = np.mean([cloud.sigma_v.value for cloud in self.clouds]) / 4.
+        dv = dv * u.km / u.s
+        wv = []
+        idx = wvmin
+        while idx < wvmax:
+            wv.append(idx)
+            idx += (dv / c.c).to(u.dimensionless_unscaled).value * idx
+        wv = np.array(wv) * u.nm
+        self.wv = wv
+        widget_dict = {}
+        for i, cloud in enumerate(self.clouds):
+            key = 'z' + str(i)
+            widget_dict[key] = widgets.FloatSlider(value=cloud.z,
+                                                   min=zmin,
+                                                   max=zmax,
+                                                   step=(zmax - zmin) / 100,
+                                                   description="Redshift: ",
+                                                   disabled=False,
+                                                   continuous_update=False,
+                                                   orientation="horizontal",
+                                                   readout=True,
+                                                   readout_format=".3f")
+            key = 't' + str(i)
+            widget_dict[key] = widgets.FloatSlider(value=cloud.temp,
+                                                   min=tmin,
+                                                   max=tmax,
+                                                   step=(tmax - tmin) / 100,
+                                                   description="Temperature: ",
+                                                   disabled=False,
+                                                   continuous_update=False,
+                                                   orientation="horizontal",
+                                                   readout=True,
+                                                   readout_format="d")
+            key = 'd' + str(i)
+            widget_dict[key] = widgets.FloatSlider(value=cloud.dens,
+                                                   min=dmin,
+                                                   max=dmax,
+                                                   step=(dmax - dmin) / 100,
+                                                   description="Density: ",
+                                                   disabled=False,
+                                                   continuous_update=False,
+                                                   orientation="horizontal",
+                                                   readout=True,
+                                                   readout_format=".3f")
+        super().__init__(self.plot, **widget_dict)
+
+    def plot(self, **kwargs):
+        flux = np.zeros(self.wv.shape)
+        for i, cloud in enumerate(self.clouds):
+            z = kwargs['z' + str(i)]
+            t = kwargs['t' + str(i)]
+            d = kwargs['d' + str(i)]
+            cloud.z = z
+            cloud.temp = t
+            cloud.dens = d
+            flux += cloud.line_flux(self.wv)
+        plt.plot(self.wv, flux)
+        plt.xlabel("Wavelength  [nm]")
+        plt.ylabel("Flux density [arbitrary units]")
+        # plt.ylabel(r"Flux density [erg cm$^{-2}$ s$^{-1}$ Hz$^{-1}$]")
+        plt.ylim(0, 1)
+        plt.show()
+        
