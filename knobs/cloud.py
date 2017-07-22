@@ -1,74 +1,61 @@
 import numpy as np
 from scipy import ndimage
 from astropy import units as u
-from astropy import constants as c
-from astropy.analytic_functions import blackbody_lambda
-import matplotlib as mpl
 from matplotlib import pyplot as plt
 import ipywidgets as widgets
 
-"""
-rydberg formula -> hydrogen lines
-for Lyman (n = 1), Balmer (n = 2), Paschen (n = 3), and Brackett (n = 4)
-series up to n = 6
-"""
-
-flux_unit = u.erg * u.s**-1 * u.cm**-2 * u.Hz**-1
-hydrogen_lines = np.array([1.0 / (1.097e7 * (1.0 / nf**2 - 1.0 / ni**2))
-                           for nf in range(1, 5)
-                           for ni in range(nf + 1, 7)])
-hydrogen_lines.sort()
-hydrogen_lines = hydrogen_lines * u.m.to(u.nm) * u.nm
-
-def gauss(x, mu, sigma):
-    var = sigma**2
-    chi2 = (x - mu)**2 / (2 * var)
-    return np.exp(-chi2) / np.sqrt(2 * np.pi * var)
+from .physics import hydrogen_lines, flux_unit, gauss, c
 
 
 class Cloud:
-    """Hydrogen cloud"""
-    def __init__(self, z, temp, dens):
-        """
-        z : redshift
-        temp : temperature in K
-        dens : density
-        """
+    """Hydrogen cloud
+
+    Parameters
+    ----------
+    z : redshift
+    sigma : velocity dispersion in km/s
+    n : column density (arbitrary units for now)
+    lyman, balmer, etc... : boolean flags for including the specified series
+    """
+    def __init__(self, z, sigma, n,
+                 lyman=True, balmer=True, paschen=True, brackett=True):
         self.z = z
-        self.temp = temp
-        self.dens = dens
+        self.sigma = sigma
+        self.n = n
+        self.lyman = lyman
+        self.balmer = balmer
+        self.paschen = paschen
+        self.brackett = brackett
 
-    @property
-    def temp(self):
-        return self._temp
+    def series(self):
+        """Construct a list of integers representing the series"""
+        series = []
+        if self.lyman:
+            series.append(1)
+        if self.balmer:
+            series.append(2)
+        if self.paschen:
+            series.append(3)
+        if self.brackett:
+            series.append(4)
+        return series
 
-    @temp.setter
-    def temp(self, temp):
-        fudge_factor = 10
-        self._temp = temp
-        self.sigma_v = np.sqrt(3 * c.k_B * fudge_factor * self.temp * u.K /
-                               c.m_p)
-        self.sigma_v = self.sigma_v.to(u.km / u.s)
-
-    @u.quantity_input(wv=u.nm)
-    def line_flux(self, wv, weights=None):
+    def line_flux(self, wv, weights=None, n_upper=6):
         """
         Get line fluxes for the specified wavelength array.
         """
+        lines = hydrogen_lines(self.series(), n_upper)
         if weights is None:
-            weights = np.ones(hydrogen_lines.shape)
+            weights = np.ones(lines.shape)
         flux = np.zeros(wv.shape)
-        for i, line in enumerate(hydrogen_lines):
+        for i, line in enumerate(lines):
             delta_lam = self.z * line
-            sigma_lam = self.sigma_v * line / c.c
-            line_flux = weights[i] * gauss(wv.to(u.nm).value,
-                                           (line + delta_lam).to(u.nm).value,
-                                           sigma_lam.to(u.nm).value)
-            flux += ndimage.gaussian_filter1d(line_flux,
-                                              sigma=sigma_lam.to(u.nm).value)
-        return self.dens * flux * flux_unit
+            sigma_lam = self.sigma * line / c
+            line_flux = weights[i] * gauss(wv, line + delta_lam, sigma_lam)
+            flux += ndimage.gaussian_filter1d(line_flux, sigma=sigma_lam)
+        return self.n * flux * flux_unit
 
-    
+
 class EmissionCloud(Cloud):
     """Line occupation based on temperature."""
     pass
@@ -88,31 +75,29 @@ class AbsorptionCloud(Cloud):
         self.continuum = continuum
         super().__init__(z, temp, dens)
 
-    @u.quantity_input(wv=u.nm)
     def line_flux(self, wv, weights=None):
         flux = super().line_flux(wv, weights)
         return np.maximum(self.continuum(wv) - flux, 0)
-        
+
 
 class CloudInteractive(widgets.interactive):
-    
-    def __init__(self, cloud, wvmin, wvmax,
+    def __init__(self, cloud, wvmin, wvmax, series_flags=True,
                  zmin=0.00, zmax=0.10,
-                 tmin=100, tmax=10000,
-                 dmin=0, dmax=0.1):
+                 smin=1, smax=500,
+                 nmin=0, nmax=0.1):
         """
         cloud : Cloud object
         wvmin : minimum wavelength in nm
         wvmax : maximum wavelength in nm
         """
         self.cloud = cloud
-        dv = cloud.sigma_v / 4.
+        dv = cloud.sigma / 4.
         wv = []
         idx = wvmin
         while idx < wvmax:
             wv.append(idx)
-            idx += (dv / c.c).to(u.dimensionless_unscaled).value * idx
-        wv = np.array(wv) * u.nm
+            idx += dv / c * idx
+        wv = np.array(wv)
         self.wv = wv
         z_widget = widgets.FloatSlider(value=cloud.z,
                                        min=zmin,
@@ -124,35 +109,70 @@ class CloudInteractive(widgets.interactive):
                                        orientation="horizontal",
                                        readout=True,
                                        readout_format=".3f")
-        temp_widget = widgets.FloatSlider(value=cloud.temp,
-                                          min=tmin,
-                                          max=tmax,
-                                          step=(tmax - tmin) / 100,
-                                          description="Temperature: ",
+        s_widget = widgets.FloatSlider(value=cloud.sigma,
+                                       min=smin,
+                                       max=smax,
+                                       step=(smax - smin) / 100,
+                                       description="Dispersion: ",
+                                       disabled=False,
+                                       continuous_update=False,
+                                       orientation="horizontal",
+                                       readout=True,
+                                       readout_format=":.3f")
+        n_widget = widgets.FloatSlider(value=cloud.dens,
+                                       min=nmin,
+                                       max=nmax,
+                                       step=(nmax - nmin) / 100,
+                                       description="Density: ",
+                                       disabled=False,
+                                       continuous_update=False,
+                                       orientation="horizontal",
+                                       readout=True,
+                                       readout_format=".3f")
+        lyman_widget = widgets.Checkbox(value=cloud.lyman,
+                                        description="Lyman series",
+                                        disabled=False,
+                                        continuous_update=False)
+        balmer_widget = widgets.Checkbox(value=cloud.balmer,
+                                         description="Balmer series",
+                                         disabled=False,
+                                         continuous_update=False)
+        paschen_widget = widgets.Checkbox(value=cloud.paschen,
+                                          description="Paschen series",
                                           disabled=False,
-                                          continuous_update=False,
-                                          orientation="horizontal",
-                                          readout=True,
-                                          readout_format="d")
-        dens_widget = widgets.FloatSlider(value=cloud.dens,
-                                          min=dmin,
-                                          max=dmax,
-                                          step=(dmax - dmin) / 100,
-                                          description="Density: ",
-                                          disabled=False,
-                                          continuous_update=False,
-                                          orientation="horizontal",
-                                          readout=True,
-                                          readout_format=".3f")
-        super().__init__(self.plot,
-                         z=z_widget,
-                         temp=temp_widget,
-                         dens=dens_widget)
-        
-    def plot(self, z, temp, dens):
+                                          continuous_update=False)
+        brackett_widget = widgets.Checkbox(value=cloud.brackett,
+                                           description="Brackett series",
+                                           disabled=False,
+                                           continuous_update=False)
+        if series_flags:
+            lyman = lyman_widget
+            balmer = balmer_widget
+            paschen = paschen_widget
+            brackett = brackett_widget
+        else:
+            lyman = self.lyman
+            balmer = self.balmer
+            paschen = self.paschen
+            brackett = self.brackett
+
+        super.__init__(self.plot,
+                       z=z_widget,
+                       sigma=s_widget,
+                       n=n_widget,
+                       lyman=lyman,
+                       balmer=balmer,
+                       paschen=paschen,
+                       brackett=brackett)
+
+    def plot(self, z, sigma, n, lyman, balmer, paschen, brackett):
         self.cloud.z = z
-        self.cloud.temp = temp
-        self.cloud.dens = dens
+        self.cloud.sigma = sigma
+        self.cloud.n = n
+        self.cloud.lyman = lyman
+        self.cloud.balmer = balmer
+        self.cloud.paschen = paschen
+        self.cloud.brackett = brackett
         flux = self.cloud.line_flux(self.wv)
         plt.plot(self.wv, flux)
         plt.xlabel("Wavelength  [nm]")
@@ -160,6 +180,7 @@ class CloudInteractive(widgets.interactive):
         # plt.ylabel(r"Flux density [erg cm$^{-2}$ s$^{-1}$ Hz$^{-1}$]")
         plt.ylim(0, 1)
         plt.show()
+
 
 class MultiCloudInteractive(widgets.interactive):
     def __init__(self, clouds, wvmin, wvmax,
