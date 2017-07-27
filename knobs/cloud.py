@@ -21,7 +21,7 @@ class Cloud:
     """
     def __init__(self, z, sigma, n,
                  lyman=True, balmer=True, paschen=False,
-                 absorption=False, continuum=1.0):
+                 absorption=False, continuum=1.0, n_upper=8):
         self.z = z
         self.sigma = sigma
         self.n = n
@@ -33,7 +33,9 @@ class Cloud:
             self.continuum = continuum
         else:
             self.continuum = lambda wv: continuum * np.ones(wv.shape)
+        self.n_upper = n_upper
 
+    @property
     def series(self):
         """Construct a list of integers representing the series"""
         series = []
@@ -45,11 +47,21 @@ class Cloud:
             series.append(3)
         return series
 
-    def line_flux(self, wv, weights=None, n_upper=6):
+    @series.setter
+    def series(self, integers):
+        integers = list(map(int, integers))
+        for i in integers:
+            if i not in range(1, 4):
+                raise ValueError("Input needs to be from {1, 2, 3}")
+        self.lyman = True if 1 in integers else False
+        self.balmer = True if 2 in integers else False
+        self.paschen = True if 3 in integers else False
+
+    def line_flux(self, wv, weights=None):
         """
         Get line fluxes for the specified wavelength array.
         """
-        lines = hydrogen_lines(self.series(), n_upper)
+        lines = hydrogen_lines(self.series, self.n_upper)
         if weights is None:
             weights = np.ones(lines.shape)
         flux = np.zeros(wv.shape)
@@ -59,7 +71,7 @@ class Cloud:
             return np.maximum(self.continuum(wv) - flux, 0)
         return flux
 
-    
+
 class CloudInteractive(interactive):
     """
     Interactive wrapper to a hydrogen cloud.
@@ -70,10 +82,11 @@ class CloudInteractive(interactive):
     wvmax : maximum wavelength in nm
     cloud : Cloud object (if None, then construct from default)
     cloud_kwargs : keyword arguments to pass to Cloud constructor
-    series_flags : if True, include toggles for the different series
+    labels : bool, if True include labels in the widgets
+    widgets : iterable of strings, indicating which widgets to construct
     """
-    def __init__(self, wvmin, wvmax, cloud=None, cloud_kwargs={},
-                 series_flags=True, labels=True,
+    def __init__(self, wvmin, wvmax, cloud=None, cloud_kwargs={}, labels=True,
+                 widgets=('z', 'sigma', 'n', 'lyman', 'balmer', 'paschen'),
                  zmin=0.00, zmax=0.10,
                  smin=1, smax=500,
                  nmin=0, nmax=0.1):
@@ -100,55 +113,74 @@ class CloudInteractive(interactive):
 
         # construct widget dictionary
         widget_dict = {}
-        desc = "Redshift: " if labels else "-"
-        widget_dict['z'] = FloatSlider(value=cloud.z,
-                                       min=zmin,
-                                       max=zmax,
-                                       step=(zmax - zmin) / 100,
-                                       description=desc,
-                                       disabled=False,
-                                       continuous_update=False,
-                                       orientation="horizontal",
-                                       readout=True,
-                                       readout_format=".3f")
-        desc = "Dispersion: " if labels else "-"
-        widget_dict['sigma'] = FloatSlider(value=cloud.sigma,
+        widget_kwargs = {"disabled": False,
+                         "continuous_update": False,
+                         "orientation": "horizontal",
+                         "readout": True,
+                         "readout_format": ".3f"}
+        key = 'z'
+        if key in widgets:
+            desc = "Redshift: " if labels else "-"
+            widget_dict[key] = FloatSlider(value=cloud.z,
+                                           min=zmin,
+                                           max=zmax,
+                                           step=(zmax - zmin) / 100,
+                                           description=desc,
+                                           **widget_kwargs)
+        else:
+            widget_dict[key] = fixed(cloud.z)
+
+        key = 'sigma'
+        if key in widgets:
+            desc = "Dispersion: " if labels else "-"
+            widget_dict[key] = FloatSlider(value=cloud.sigma,
                                            min=smin,
                                            max=smax,
                                            step=(smax - smin) / 100,
                                            description=desc,
-                                           disabled=False,
-                                           continuous_update=False,
-                                           orientation="horizontal",
-                                           readout=True,
-                                           readout_format=".3f")
-        desc = "Density: " if labels else "-"
-        widget_dict['n'] = FloatSlider(value=cloud.n,
-                                       min=nmin,
-                                       max=nmax,
-                                       step=(nmax - nmin) / 100,
-                                       description=desc,
-                                       disabled=False,
-                                       continuous_update=False,
-                                       orientation="horizontal",
-                                       readout=True,
-                                       readout_format=".3f")
-        if series_flags:
-            desc = "Lyman series" if labels else "-"
-            widget_dict['lyman'] = Checkbox(value=cloud.lyman,
-                                            description=desc,
-                                            disabled=False)
-            desc = "Balmer series" if labels else "-"
-            widget_dict['balmer'] = Checkbox(value=cloud.balmer,
-                                             description=desc,
-                                             disabled=False)
-            desc = "Paschen series" if labels else "-"
-            widget_dict['paschen'] = Checkbox(value=cloud.paschen,
-                                              description=desc,                                              disabled=False)
+                                           **widget_kwargs)
         else:
-            widget_dict['lyman'] = fixed(self.cloud.lyman)
-            widget_dict['balmer'] = fixed(self.cloud.balmer)
-            widget_dict['paschen'] = fixed(self.cloud.paschen)
+            widget_dict[key] = fixed(cloud.sigma)
+
+        key = 'n'
+        if key in widgets:
+            desc = "Density: " if labels else "-"
+            widget_dict[key] = FloatSlider(value=cloud.n,
+                                           min=nmin,
+                                           max=nmax,
+                                           step=(nmax - nmin) / 100,
+                                           description=desc,
+                                           **widget_kwargs)
+        else:
+            widget_dict[key] = fixed(cloud.n)
+
+        key = "lyman"
+        if key in widgets:
+            desc = "Lyman series" if labels else "-"
+            widget_dict[key] = Checkbox(value=cloud.lyman,
+                                        description=desc,
+                                        disabled=False)
+        else:
+            widget_dict[key] = fixed(cloud.lyman)
+
+        key = "balmer"
+        if key in widgets:
+            desc = "Balmer series" if labels else "-"
+            widget_dict[key] = Checkbox(value=cloud.balmer,
+                                        description=desc,
+                                        disabled=False)
+        else:
+            widget_dict[key] = fixed(cloud.balmer)
+
+        key = "paschen"
+        if key in widgets:
+            desc = "Paschen series" if labels else "-"
+            widget_dict[key] = Checkbox(value=cloud.paschen,
+                                        description=desc,
+                                        disabled=False)
+        else:
+            widget_dict[key] = fixed(cloud.paschen)
+
         self.widget_dict = widget_dict
         super().__init__(self.plot, **widget_dict)
 
@@ -177,8 +209,11 @@ class MultiCloudInteractive(interactive):
     wvmin : minimum wavelength in nm
     wvmax : maximum wavelength in nm
     clouds : list of Cloud objects
+    labels : bool, if True include labels in the widgets
+    widgets : iterable of strings, indicating which widgets to construct
     """
-    def __init__(self, wvmin, wvmax, clouds, series_flags=True, labels=True,
+    def __init__(self, wvmin, wvmax, clouds, labels=True,
+                 widgets=('z', 'sigma', 'n', 'lyman', 'balmer', 'paschen'),
                  zmin=0.00, zmax=0.10,
                  smin=1, smax=500,
                  nmin=0, nmax=0.1):
@@ -200,67 +235,76 @@ class MultiCloudInteractive(interactive):
         cloud.n = old_n
 
         widget_dict = {}
+        widget_kwargs = {"disabled": False,
+                         "continuous_update": False,
+                         "orientation": "horizontal",
+                         "readout": True,
+                         "readout_format": ".3f"}
         for i, cloud in enumerate(self.clouds):
-            key = 'z' + str(i)
-            desc = "Redshift: " if labels else "-"
-            widget_dict[key] = FloatSlider(value=cloud.z,
-                                           min=zmin,
-                                           max=zmax,
-                                           step=(zmax - zmin) / 100,
-                                           description=desc,
-                                           disabled=False,
-                                           continuous_update=False,
-                                           orientation="horizontal",
-                                           readout=True,
-                                           readout_format=".3f")
-            key = 'sigma' + str(i)
-            desc = "Dispersion: " if labels else "-"
-            widget_dict[key] = FloatSlider(value=cloud.sigma,
-                                           min=smin,
-                                           max=smax,
-                                           step=(smax - smin) / 100,
-                                           description=desc,
-                                           disabled=False,
-                                           continuous_update=False,
-                                           orientation="horizontal",
-                                           readout=True,
-                                           readout_format=".3f")
-            key = 'n' + str(i)
-            desc = "Density: " if labels else "-"
-            widget_dict[key] = FloatSlider(value=cloud.n,
-                                           min=nmin,
-                                           max=nmax,
-                                           step=(nmax - nmin) / 100,
-                                           description=desc,
-                                           disabled=False,
-                                           continuous_update=False,
-                                           orientation="horizontal",
-                                           readout=True,
-                                           readout_format=".3f")
-            if series_flags:
-                key = 'lyman' + str(i)
-                desc = "Lyman series" if labels else "-"
-                widget_dict[key] = Checkbox(value=cloud.lyman,
-                                            description=desc,
-                                            disabled=False)
-                key = 'balmer' + str(i)
-                desc = "Balmer series" if labels else "-"
-                widget_dict[key] = Checkbox(value=cloud.balmer,
-                                            description=desc,
-                                            disabled=False)
-                key = 'paschen' + str(i)
-                desc = "Paschen series" if labels else "-"
-                widget_dict[key] = Checkbox(value=cloud.paschen,
-                                            description=desc,
-                                            disabled=False)
+            key = 'z'
+            if key in widgets:
+                desc = "Redshift: " if labels else "-"
+                widget_dict[key + str(i)] = FloatSlider(value=cloud.z,
+                                                        min=zmin,
+                                                        max=zmax,
+                                                        step=(zmax - zmin) / 100,
+                                                        description=desc,
+                                                        **widget_kwargs)
             else:
-                key = 'lyman' + str(i)
-                widget_dict[key] = fixed(cloud.lyman)
-                key = 'balmer' + str(i)
-                widget_dict[key] = fixed(cloud.balmer)
-                key = 'paschen' + str(i)
-                widget_dict[key] = fixed(cloud.paschen)
-            
+                key += str(i)
+                widget_dict[key + str(i)] = fixed(cloud.z)
+
+            key = 'sigma'
+            if key in widgets:
+                desc = "Dispersion: " if labels else "-"
+                widget_dict[key + str(i)] = FloatSlider(value=cloud.sigma,
+                                                        min=smin,
+                                                        max=smax,
+                                                        step=(smax - smin) / 100,
+                                                        description=desc,
+                                                        **widget_kwargs)
+            else:
+                widget_dict[key + str(i)] = fixed(cloud.sigma)
+
+            key = 'n'
+            if key in widgets:
+                desc = "Density: " if labels else "-"
+                widget_dict[key + str(i)] = FloatSlider(value=cloud.n,
+                                                        min=nmin,
+                                                        max=nmax,
+                                                        step=(nmax - nmin) / 100,
+                                                        description=desc,
+                                                        **widget_kwargs)
+            else:
+                widget_dict[key + str(i)] = fixed(cloud.n)
+
+            key = 'lyman'
+            if key in widgets:
+                desc = "Lyman series" if labels else "-"
+                widget_dict[key + str(i)] = Checkbox(value=cloud.lyman,
+                                                     description=desc,
+                                                     disabled=False)
+            else:
+                widget_dict[key + str(i)] = fixed(cloud.lyman)
+
+            key = 'balmer'
+            if key in widgets:
+                desc = "Balmer series" if labels else "-"
+                widget_dict[key + str(i)] = Checkbox(value=cloud.balmer,
+                                                     description=desc,
+                                                     disabled=False)
+            else:
+                widget_dict[key + str(i)] = fixed(cloud.balmer)
+
+            key = 'paschen'
+            if key in widgets:
+                desc = "Paschen series" if labels else "-"
+                widget_dict[key + str(i)] = Checkbox(value=cloud.paschen,
+                                                     description=desc,
+                                                     disabled=False)
+            else:
+                widget_dict[key + str(i)] = fixed(cloud.paschen)
+
         super().__init__(self.plot, **widget_dict)
 
     def plot(self, **kwargs):
@@ -279,4 +323,3 @@ class MultiCloudInteractive(interactive):
         # plt.ylabel(r"Flux density [erg cm$^{-2}$ s$^{-1}$ Hz$^{-1}$]")
         plt.ylim(0, self.ymax)
         plt.show()
-        
