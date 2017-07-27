@@ -1,7 +1,7 @@
 import numpy as np
-import matplotlib as mpl
 from matplotlib import pyplot as plt
 import ipywidgets as widgets
+
 
 def gauss(x, mu, sigma):
     var = sigma**2
