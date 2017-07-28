@@ -58,9 +58,7 @@ class Cloud:
         self.paschen = True if 3 in integers else False
 
     def line_flux(self, wv, weights=None):
-        """
-        Get line fluxes for the specified wavelength array.
-        """
+        """Get line fluxes for the specified wavelength array."""
         lines = hydrogen_lines(self.series, self.n_upper)
         if weights is None:
             weights = np.ones(lines.shape)
@@ -68,7 +66,7 @@ class Cloud:
         for i, line in enumerate(lines):
             flux += line_profile(wv, line, self.z, self.sigma, self.n)
         if self.absorption:
-            return np.maximum(self.continuum(wv) - flux, 0)
+            return self.continuum(wv) - flux
         return flux
 
 
@@ -117,7 +115,7 @@ class CloudInteractive(interactive):
                          "continuous_update": False,
                          "orientation": "horizontal",
                          "readout": True,
-                         "readout_format": ".3f"}
+                         "readout_format": ".4f"}
         key = 'z'
         if key in widgets:
             desc = "Redshift: " if labels else "-"
@@ -239,7 +237,7 @@ class MultiCloudInteractive(interactive):
                          "continuous_update": False,
                          "orientation": "horizontal",
                          "readout": True,
-                         "readout_format": ".3f"}
+                         "readout_format": ".4f"}
         for i, cloud in enumerate(self.clouds):
             key = 'z'
             if key in widgets:
@@ -251,7 +249,6 @@ class MultiCloudInteractive(interactive):
                                                         description=desc,
                                                         **widget_kwargs)
             else:
-                key += str(i)
                 widget_dict[key + str(i)] = fixed(cloud.z)
 
             key = 'sigma'
