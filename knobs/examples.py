@@ -16,7 +16,7 @@ def high_z_abs(labels=True):
         Cloud(z=1, sigma=50, n=0.01, absorption=True, continuum=0.01)
     ]
     return MultiCloudInteractive(100, 1000, clouds,
-                                 zmax=3, nmax=1, labels=labels,
+                                 zmax=3, nmax=1, show_labels=labels,
                                  widgets=('z', 'lyman', 'balmer', 'paschen'))
 
 
@@ -27,7 +27,7 @@ def two_em(labels=True):
         Cloud(0.001, 400, 1)
     ]
     return MultiCloudInteractive(650, 660, clouds,
-                                 zmax=0.01, nmin=0.1, nmax=2, labels=labels,
+                                 zmax=0.01, nmin=0.1, nmax=2, show_labels=labels,
                                  widgets=('z', 'n'))
 
 
@@ -37,7 +37,7 @@ def two_abs(labels=True):
               Cloud(0.0005, 100, 0.2, absorption=True, continuum=0.01)]
     return MultiCloudInteractive(650, 660, clouds,
                                  zmax=0.001, nmin=0.1, nmax=1,
-                                 smin=50, smax=200, labels=labels,
+                                 smin=50, smax=200, show_labels=labels,
                                  widgets=('z', 'sigma'))
 
 
@@ -51,7 +51,7 @@ def em_abs(labels=True):
         Cloud(z=0, sigma=50, n=0.1, absorption=False),
         Cloud(z=z, sigma=100, n=0.01, absorption=True)
     ]
-    return MultiCloudInteractive(432, 436, clouds, labels=labels,
+    return MultiCloudInteractive(432, 436, clouds, show_labels=labels,
                                  zmax=3, nmax=0.5, smin=10, smax=100,
                                  widgets=('n', 'sigma', 'lyman', 'balmer'))
 

@@ -1,3 +1,5 @@
+from itertools import cycle
+from string import ascii_lowercase
 import numpy as np
 from matplotlib import pyplot as plt
 from ipywidgets import FloatSlider, Checkbox, fixed, interactive
@@ -80,10 +82,10 @@ class CloudInteractive(interactive):
     wvmax : maximum wavelength in nm
     cloud : Cloud object (if None, then construct from default)
     cloud_kwargs : keyword arguments to pass to Cloud constructor
-    labels : bool, if True include labels in the widgets
+    show_labels : bool, if True include labels in the widgets
     widgets : iterable of strings, indicating which widgets to construct
     """
-    def __init__(self, wvmin, wvmax, cloud=None, cloud_kwargs={}, labels=True,
+    def __init__(self, wvmin, wvmax, cloud=None, cloud_kwargs={}, show_labels=True,
                  widgets=('z', 'sigma', 'n', 'lyman', 'balmer', 'paschen'),
                  zmin=0.00, zmax=0.10,
                  smin=1, smax=500,
@@ -111,73 +113,52 @@ class CloudInteractive(interactive):
 
         # construct widget dictionary
         widget_dict = {}
+
+        # float sliders
+        keys = ['z', 'sigma', 'n']
+        labels = ['Redshift: ', 'Dispersion: ', 'Density: ']
         widget_kwargs = {"disabled": False,
                          "continuous_update": False,
                          "orientation": "horizontal",
                          "readout": True,
                          "readout_format": ".4f"}
-        key = 'z'
-        if key in widgets:
-            desc = "Redshift: " if labels else "-"
-            widget_dict[key] = FloatSlider(value=cloud.z,
-                                           min=zmin,
-                                           max=zmax,
-                                           step=(zmax - zmin) / 100,
-                                           description=desc,
+        values = [cloud.z, cloud.sigma, cloud.n]
+        bounds = [(zmin, zmax), (smin, smax), (nmin, nmax)]
+        letter = cycle(ascii_lowercase)
+        for i, key in enumerate(keys):
+            value = values[i]
+            if key not in widgets:
+                widget_dict[key] = fixed(value)
+                continue
+            if show_labels:
+                label = labels[i]
+            else:
+                label = "({})".format(next(letter))
+            lower, upper = bounds[i]
+            widget_dict[key] = FloatSlider(value=value,
+                                           min=lower,
+                                           max=upper,
+                                           step=(upper - lower) / 100,
+                                           description=label,
                                            **widget_kwargs)
-        else:
-            widget_dict[key] = fixed(cloud.z)
 
-        key = 'sigma'
-        if key in widgets:
-            desc = "Dispersion: " if labels else "-"
-            widget_dict[key] = FloatSlider(value=cloud.sigma,
-                                           min=smin,
-                                           max=smax,
-                                           step=(smax - smin) / 100,
-                                           description=desc,
-                                           **widget_kwargs)
-        else:
-            widget_dict[key] = fixed(cloud.sigma)
-
-        key = 'n'
-        if key in widgets:
-            desc = "Density: " if labels else "-"
-            widget_dict[key] = FloatSlider(value=cloud.n,
-                                           min=nmin,
-                                           max=nmax,
-                                           step=(nmax - nmin) / 100,
-                                           description=desc,
-                                           **widget_kwargs)
-        else:
-            widget_dict[key] = fixed(cloud.n)
-
-        key = "lyman"
-        if key in widgets:
-            desc = "Lyman series" if labels else "-"
-            widget_dict[key] = Checkbox(value=cloud.lyman,
-                                        description=desc,
-                                        disabled=False)
-        else:
-            widget_dict[key] = fixed(cloud.lyman)
-
-        key = "balmer"
-        if key in widgets:
-            desc = "Balmer series" if labels else "-"
-            widget_dict[key] = Checkbox(value=cloud.balmer,
-                                        description=desc,
-                                        disabled=False)
-        else:
-            widget_dict[key] = fixed(cloud.balmer)
-
-        key = "paschen"
-        if key in widgets:
-            desc = "Paschen series" if labels else "-"
-            widget_dict[key] = Checkbox(value=cloud.paschen,
-                                        description=desc,
-                                        disabled=False)
-        else:
-            widget_dict[key] = fixed(cloud.paschen)
+        # boolean checkboxes
+        keys = ['lyman', 'balmer', 'paschen']
+        labels = [s.capitalize() + ": " for s in keys]
+        widget_kwargs = {"disabled": False}
+        values = [cloud.lyman, cloud.balmer, cloud.paschen]
+        for i, key in enumerate(keys):
+            value = values[i]
+            if key not in widgets:
+                widget_dict[key] = fixed(value)
+                continue
+            if show_labels:
+                label = labels[i]
+            else:
+                label = "({})".format(next(letter))
+            widget_dict[key] = Checkbox(value=value,
+                                        description=label,
+                                        **widget_kwargs)
 
         self.widget_dict = widget_dict
         super().__init__(self.plot, **widget_dict)
@@ -207,10 +188,10 @@ class MultiCloudInteractive(interactive):
     wvmin : minimum wavelength in nm
     wvmax : maximum wavelength in nm
     clouds : list of Cloud objects
-    labels : bool, if True include labels in the widgets
+    show_labels : bool, if True include labels in the widgets
     widgets : iterable of strings, indicating which widgets to construct
     """
-    def __init__(self, wvmin, wvmax, clouds, labels=True,
+    def __init__(self, wvmin, wvmax, clouds, show_labels=True,
                  widgets=('z', 'sigma', 'n', 'lyman', 'balmer', 'paschen'),
                  zmin=0.00, zmax=0.10,
                  smin=1, smax=500,
@@ -232,75 +213,53 @@ class MultiCloudInteractive(interactive):
         cloud.sigma = old_sigma
         cloud.n = old_n
 
+        # construct widget dictionary        
         widget_dict = {}
-        widget_kwargs = {"disabled": False,
-                         "continuous_update": False,
-                         "orientation": "horizontal",
-                         "readout": True,
-                         "readout_format": ".4f"}
+        letter = cycle(ascii_lowercase)
         for i, cloud in enumerate(self.clouds):
-            key = 'z'
-            if key in widgets:
-                desc = "Redshift: " if labels else "-"
-                widget_dict[key + str(i)] = FloatSlider(value=cloud.z,
-                                                        min=zmin,
-                                                        max=zmax,
-                                                        step=(zmax - zmin) / 100,
-                                                        description=desc,
+            # float sliders
+            keys = ['z', 'sigma', 'n']
+            labels = ['Redshift: ', 'Dispersion: ', 'Density: ']
+            widget_kwargs = {"disabled": False,
+                             "continuous_update": False,
+                             "orientation": "horizontal",
+                             "readout": True,
+                             "readout_format": ".4f"}
+            values = [cloud.z, cloud.sigma, cloud.n]
+            bounds = [(zmin, zmax), (smin, smax), (nmin, nmax)]
+            for j, key in enumerate(keys):
+                value = values[j]
+                if key not in widgets:
+                    widget_dict[key + str(i)] = fixed(value)
+                    continue
+                if show_labels:
+                    label = labels[j]
+                else:
+                    label = "({})".format(next(letter))
+                lower, upper = bounds[j]
+                widget_dict[key + str(i)] = FloatSlider(value=value,
+                                                        min=lower,
+                                                        max=upper,
+                                                        step=(upper - lower) / 100,
+                                                        description=label,
                                                         **widget_kwargs)
-            else:
-                widget_dict[key + str(i)] = fixed(cloud.z)
-
-            key = 'sigma'
-            if key in widgets:
-                desc = "Dispersion: " if labels else "-"
-                widget_dict[key + str(i)] = FloatSlider(value=cloud.sigma,
-                                                        min=smin,
-                                                        max=smax,
-                                                        step=(smax - smin) / 100,
-                                                        description=desc,
-                                                        **widget_kwargs)
-            else:
-                widget_dict[key + str(i)] = fixed(cloud.sigma)
-
-            key = 'n'
-            if key in widgets:
-                desc = "Density: " if labels else "-"
-                widget_dict[key + str(i)] = FloatSlider(value=cloud.n,
-                                                        min=nmin,
-                                                        max=nmax,
-                                                        step=(nmax - nmin) / 100,
-                                                        description=desc,
-                                                        **widget_kwargs)
-            else:
-                widget_dict[key + str(i)] = fixed(cloud.n)
-
-            key = 'lyman'
-            if key in widgets:
-                desc = "Lyman series" if labels else "-"
-                widget_dict[key + str(i)] = Checkbox(value=cloud.lyman,
-                                                     description=desc,
-                                                     disabled=False)
-            else:
-                widget_dict[key + str(i)] = fixed(cloud.lyman)
-
-            key = 'balmer'
-            if key in widgets:
-                desc = "Balmer series" if labels else "-"
-                widget_dict[key + str(i)] = Checkbox(value=cloud.balmer,
-                                                     description=desc,
-                                                     disabled=False)
-            else:
-                widget_dict[key + str(i)] = fixed(cloud.balmer)
-
-            key = 'paschen'
-            if key in widgets:
-                desc = "Paschen series" if labels else "-"
-                widget_dict[key + str(i)] = Checkbox(value=cloud.paschen,
-                                                     description=desc,
-                                                     disabled=False)
-            else:
-                widget_dict[key + str(i)] = fixed(cloud.paschen)
+            # boolean checkboxes
+            keys = ['lyman', 'balmer', 'paschen']
+            labels = [s.capitalize() + ": " for s in keys]
+            widget_kwargs = {"disabled": False}
+            values = [cloud.lyman, cloud.balmer, cloud.paschen]
+            for j, key in enumerate(keys):
+                value = values[j]
+                if key not in widgets:
+                    widget_dict[key + str(i)] = fixed(value)
+                    continue
+                if show_labels:
+                    label = labels[j]
+                else:
+                    label = "({})".format(next(letter))
+                widget_dict[key + str(i)] = Checkbox(value=value,
+                                                     description=label,
+                                                     **widget_kwargs)
 
         super().__init__(self.plot, **widget_dict)
 
