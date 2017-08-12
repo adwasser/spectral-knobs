@@ -5,8 +5,8 @@ import seaborn as sns
 sns.set_context('poster', font_scale=1.5)
 sns.set_style('ticks', rc={'xtick.direction': 'in', 'ytick.direction': 'in'})
 
-__all__ = ["high_z_abs", "two_em", "two_abs", "em_abs",
-           "example1", "example2", "example3", "example4"]
+__all__ = ["high_z_abs", "two_em", "two_abs", "em_abs", "orbit",
+           "example1", "example2", "example3", "example4", "example5"]
 
 
 def high_z_abs(labels=True):
@@ -56,6 +56,13 @@ def em_abs(labels=True):
                                  widgets=('n', 'sigma', 'lyman', 'balmer'))
 
 
+def orbit(labels=True):
+    """Single emission line in a 5 year orbit"""
+    return CloudInteractive(655, 657, show_labels=labels,
+                            smin=10, smax=10, tmax=10, vmax=100, Pmin=5, Pmax=5,
+                            widgets=('t', 'v'))
+
+
 def example1():
     return high_z_abs(labels=False)
 
@@ -67,3 +74,6 @@ def example3():
 
 def example4():
     return em_abs(labels=False)
+
+def example5():
+    return orbit(labels=False)
